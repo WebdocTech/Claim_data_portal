@@ -26,6 +26,68 @@ DB credentials are read from `easypaisa/.env` (`WEBDOC_SQL2_*`, `*_EP`). Portal 
 
 Once a claim is `Paid` its status is locked for everyone.
 
+## Claim screening
+
+Approved claims are screened for duplicates and false claims before Finance pays them.
+Flags appear in the **Risk** column of every claims view and in the CSV exports; opening one
+shows what was found, the claims it conflicts with, and lets Finance acknowledge it with a
+reason (append-only, in `claim_flag_reviews`). Screening never blocks a payment on its own —
+it informs the reviewer.
+
+Rules (`backend/app/screening.py`, one set-based query each over the replica):
+
+| Rule | Flags |
+|------|-------|
+| `DUP_SERVICE_CLAIM` | The same subscription was already paid for this service in this entitlement period |
+| `DUP_SERVICE_CROSS_SUB` | Same number already paid for this service in this period under another subscription |
+| `DUP_IMEI` | A well-formed IMEI (length + Luhn checksum) on more than one approved claim |
+| `SHARED_PAYOUT_ACCOUNT` | One payout account paid for several numbers whose claimant names disagree |
+| `SHARED_SUBSCRIPTION` | One subscription raising approved claims from several mobile numbers |
+| `PLACEHOLDER_IDENTIFIER` | Payout account or IMEI is filler rather than a real value |
+| `AMOUNT_OVER_COVERAGE` | Approved amount above the product's coverage |
+| `BLACKLIST_MATCH` | Claimant matches `TestClaimBlacklists` by number or name |
+| `MISSING_CLAIMANT_NAME` | Approved payout with no usable claimant name |
+
+Screening reads the `digital_insurance` replica inside `claim_portal`, so the source SQL Server
+is never queried, and it runs automatically after each replica sync. Run it by hand with
+`python manage.py screen`.
+
+**Entitlement periods.** A duplicate means *the same subscription was PAID more than
+once for one service inside one entitlement period*. Three things follow from that:
+
+- Periods are **calendar buckets, not rolling days**. With `month`, 18 September and
+  8 October are 20 days apart but fall in two different months, so they are two
+  entitlements and nothing is reported.
+- The earlier claim must have been **Paid**. A claim that was rejected and then
+  re-submitted and approved is one entitlement settled once, so rejected claims are
+  never counterparts.
+- Billing frequency is never used as the period - a "Daily" plan is charged daily, it
+  does not entitle a claim per day - so periods start unset. Unset means a repeat is
+  reported with the day gap and never as a blocker.
+
+```powershell
+python manage.py windows                      # the period per category
+python manage.py set-window Health month       # one paid Health claim per calendar month
+python manage.py set-window Mobile year        # one per calendar year
+python manage.py set-window Health none        # back to reporting without judging
+python manage.py screen                        # apply to existing claims
+```
+
+Valid periods: `day`, `week`, `month`, `quarter`, `half`, `year`.
+
+**Product catalogue.** Plans and coverage come from `claim_service_plans`, imported from
+the MySQL catalogue (`digital_insurance_products`), then the products workbook, then the
+billing period spelled out in the service name:
+
+```powershell
+python import_catalogue.py [DIGIINsurance_Products.xlsx]   # --dry-run to preview
+```
+
+The import prints the services it could not find a plan for. Those keep a warning-level
+duplicate rule rather than being judged against a guessed period. A service plan edited by
+hand (`source = 'manual'`) is never overwritten by a re-import, and `claim_window_days` is
+preserved on every row.
+
 ## Run
 
 ```powershell

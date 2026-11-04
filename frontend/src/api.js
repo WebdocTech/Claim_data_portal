@@ -33,6 +33,10 @@ export const api = {
   setStatusBulk: (claimIds, status) => request("POST", "/claims/status/bulk", { claim_ids: claimIds, status }),
   history: (claimId) => request("GET", `/claims/${claimId}/history`),
   adminSearch: (q) => request("GET", `/admin/search?q=${encodeURIComponent(q)}`),
+  flags: (claimId) => request("GET", `/claims/${claimId}/flags`),
+  reviewFlag: (claimId, ruleCode, action, reason) =>
+    request("POST", `/claims/${claimId}/flags/${ruleCode}/review`, { action, reason }),
+  screening: () => request("GET", "/screening"),
 };
 
 export async function downloadExport(view, status) {

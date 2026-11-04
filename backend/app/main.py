@@ -4,6 +4,7 @@ import logging
 from contextlib import asynccontextmanager
 from datetime import date
 from pathlib import Path
+from typing import Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,7 +12,7 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import config, replica, source, statuses
+from . import config, replica, screening, source, statuses
 from .auth import authenticate, current_user, issue_token, require_roles
 from .db import portal_cursor
 
@@ -53,6 +54,7 @@ FINANCE_VIEWS = {
             ("service", "Service"),
             ("approved_date", "Approved Date"),
             ("payment_status", "Status"),
+            ("risk", "Risk"),
             ("company", "Company"),
         ],
     },
@@ -68,6 +70,7 @@ FINANCE_VIEWS = {
             ("approved_amount", "Net Payable"),
             ("approved_date", "Approved Date"),
             ("payment_status", "Status"),
+            ("risk", "Risk"),
             ("company", "Company"),
             ("service", "Service"),
         ],
@@ -88,6 +91,8 @@ FINANCE_VIEWS = {
             ("company", "Company"),
             ("status_updated_by", "Marked Paid By"),
             ("payment_status", "Status"),
+            # Paid claims are locked, but a flag on one is an audit finding worth seeing.
+            ("risk", "Risk"),
         ],
     },
 }
@@ -107,6 +112,12 @@ class BulkStatusBody(BaseModel):
     status: str
 
 
+class FlagReviewBody(BaseModel):
+    action: Literal["acknowledged", "reopened"]
+    # A reason is required: an acknowledgement without one tells the next reviewer nothing.
+    reason: str = Field(min_length=3, max_length=500)
+
+
 def excel_names():
     with portal_cursor() as cur:
         cur.execute("SELECT claim_id, name FROM excel_matches WHERE name IS NOT NULL")
@@ -116,6 +127,8 @@ def excel_names():
 def with_status(claims):
     current = statuses.current_statuses()
     names = excel_names()
+    # One query for every claim's screening flags, rather than one per claim.
+    flags = screening.flags_by_claim()
     for c in claims:
         # Source name first; most claims have none, so fall back to the Finance workbook.
         c["name"] = (c["name"] or "").strip() or names.get(c["claim_id"])
@@ -124,6 +137,7 @@ def with_status(claims):
         c["status_updated_by"] = s["updated_by"] if s else None
         c["status_updated_at"] = s["updated_at"] if s else None
         c["is_paid"] = c["payment_status"] == statuses.PAID
+        c.update(screening.risk_summary(flags.get(c["claim_id"], [])))
     return claims
 
 
@@ -142,6 +156,8 @@ def me(user=Depends(current_user)):
         "statuses": statuses.STATUSES,
         "allowed_statuses": [s for s in statuses.STATUSES if s in statuses.ALLOWED_TARGETS[user["role"]]],
         "finance_views": FINANCE_VIEWS,
+        "screening_rules": screening.RULES,
+        "can_review_flags": user["role"] == "finance",
     }
 
 
@@ -193,6 +209,43 @@ def set_status(claim_id: int, body: StatusBody, user=Depends(require_roles("fina
 @app.get("/api/claims/{claim_id}/history")
 def status_history(claim_id: int, user=Depends(current_user)):
     return statuses.history(claim_id)
+
+
+@app.get("/api/claims/{claim_id}/flags")
+def claim_flags(claim_id: int, user=Depends(current_user)):
+    """Every screening flag on one claim, with who reviewed it and why."""
+    flags = screening.flags_by_claim([claim_id]).get(claim_id, [])
+    return {
+        "claim_id": claim_id,
+        "flags": flags,
+        "summary": screening.risk_summary(flags),
+        "reviews": screening.review_history(claim_id),
+    }
+
+
+@app.post("/api/claims/{claim_id}/flags/{rule_code}/review")
+def review_claim_flag(
+    claim_id: int,
+    rule_code: str,
+    body: FlagReviewBody,
+    user=Depends(require_roles("finance")),
+):
+    """Acknowledge a flag (it stops counting towards the claim's risk) or re-open it.
+
+    Append-only: the flag is left as computed, so the next screening run does not
+    undo the decision and the reasoning stays on the record.
+    """
+    if rule_code not in screening.RULES:
+        raise HTTPException(400, f"Unknown rule '{rule_code}'")
+    result = screening.review_flag(claim_id, rule_code, body.action, body.reason, user)
+    if result is None:
+        raise HTTPException(404, "That flag is not on this claim")
+    return result
+
+
+@app.get("/api/screening")
+def screening_overview(user=Depends(require_roles("finance", "admin"))):
+    return screening.overview()
 
 
 @app.get("/api/admin/search")

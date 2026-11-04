@@ -75,6 +75,11 @@ main { padding: 20px; max-width: 1600px; margin: 0 auto; }
 .sort-head:hover { color: var(--accent); }
 .sort-arrow { font-size: 10px; }
 .grid tbody tr:nth-child(even) { background: var(--row-alt); }
+/* Risk tints come first so paid/draft/selected below still override them: a row the
+   user is editing or has selected must show that, flagged or not. The left-edge
+   stripe is a box-shadow (see .risk-row-*) so it survives either way. */
+.grid tbody tr.risk-row-warn    { background: #fffaf0; }
+.grid tbody tr.risk-row-blocker { background: #fdf1f1; }
 .grid tbody tr.paid-row { background: var(--paid-row); }
 .grid tbody tr.draft-row { background: var(--warn-bg); }
 .grid tbody tr.selected-row { background: var(--info-bg); }
@@ -104,6 +109,32 @@ main { padding: 20px; max-width: 1600px; margin: 0 auto; }
 
 .pager { display: flex; gap: 12px; align-items: center; justify-content: flex-end; margin-top: 12px; }
 
+/* Screening: risk column, summary bar and the per-claim flag cards. */
+.risk-bar {
+  display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+  margin-bottom: 12px; padding: 8px 12px; border-radius: 8px;
+  background: var(--surface); border: 1px solid var(--border);
+}
+.risk-button { border: none; background: none; padding: 0; cursor: pointer; }
+.badge-count {
+  margin-left: 6px; padding-left: 6px; font-weight: 700;
+  border-left: 1px solid currentColor; opacity: .75;
+}
+.badge-loud { box-shadow: 0 0 0 1px var(--bad); }
+
+/* Stripe down the left edge of a flagged row, so a problem is visible while
+   scanning without reading across to the Risk column. */
+.grid tbody tr.risk-row-warn    > td:first-child { box-shadow: inset 4px 0 0 var(--warn); }
+.grid tbody tr.risk-row-blocker > td:first-child { box-shadow: inset 4px 0 0 var(--bad); }
+.grid tbody tr.risk-row-blocker td { font-weight: 500; }
+.wide-modal { width: min(820px, 100%); }
+.flag { border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; margin-bottom: 10px; }
+.flag-ack { opacity: .62; }
+.flag-head { display: flex; gap: 10px; align-items: baseline; margin-bottom: 8px; }
+.flag-kv { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); margin-bottom: 6px; }
+.flag-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+.flag-actions .search { min-width: 200px; flex: 1 1 260px; }
+
 .overlay { position: fixed; inset: 0; background: rgba(15, 20, 30, .45); display: grid; place-items: center; z-index: 20; padding: 16px; }
 .modal { background: var(--surface); border-radius: 10px; padding: 20px; width: min(720px, 100%); max-height: 85vh; overflow: auto; }
 .modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
@@ -120,3 +151,7 @@ main { padding: 20px; max-width: 1600px; margin: 0 auto; }
   main { padding: 16px; }
   .search { min-width: 0; flex: 1 1 100%; }
 }
+.risk-bar-title { flex: 0 0 100%; }
+.risk-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.risk-filter { max-width: 320px; }
+.flag-summary { margin: 0 0 8px; font-weight: 600; }

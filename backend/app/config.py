@@ -23,6 +23,14 @@ PG_USER = os.getenv("DB_USER_EP")
 PG_PASSWORD = os.getenv("DB_PASSWORD_EP")
 PG_DATABASE = os.getenv("PORTAL_DB_NAME", "claim_portal")
 
+# Product catalogue (MySQL): digital_insurance_products.* holds the live product and
+# policy-rule tables the screening catalogue is imported from. Read-only, and only
+# read by import_catalogue.py - never during a request.
+CATALOGUE_HOST = os.getenv("claims_db_host")
+CATALOGUE_PORT = int(os.getenv("claims_db_port", "3306"))
+CATALOGUE_USER = os.getenv("claims_db_user")
+CATALOGUE_PASSWORD = os.getenv("claims_db_password")
+
 JWT_SECRET = os.getenv("JWT_SECRET")
 JWT_HOURS = int(os.getenv("JWT_HOURS", "12"))
 

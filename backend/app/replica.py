@@ -25,6 +25,7 @@ TABLES = [
     "PaymentDetail",
     "ClaimAuditLogs",
     "ClaimBenefitTransactions",
+    "TestClaimBlacklists",  # screened against by the BLACKLIST_MATCH rule
 ]
 
 PG_TYPES = {
@@ -121,7 +122,12 @@ def sync_once():
 
 
 def start_scheduler(interval_minutes):
-    """Sync now, then every interval_minutes, on a daemon thread inside the API process."""
+    """Sync now, then every interval_minutes, on a daemon thread inside the API process.
+
+    Screening runs straight after each sync, because its rules read the replica and
+    would otherwise report on the previous copy. A screening failure is logged and
+    does not stop the next sync.
+    """
 
     def loop():
         while True:
@@ -129,6 +135,13 @@ def start_scheduler(interval_minutes):
                 log.info("replica synced: %s", sync_once())
             except Exception:
                 log.exception("replica sync failed")
+            else:
+                try:
+                    from . import screening
+
+                    log.info("claims screened: %s", screening.screen_once())
+                except Exception:
+                    log.exception("claim screening failed")
             time.sleep(interval_minutes * 60)
 
     threading.Thread(target=loop, name="replica-sync", daemon=True).start()

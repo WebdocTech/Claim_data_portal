@@ -6,3 +6,4 @@ psycopg2-binary>=2.9
 pyodbc>=5.0
 python-dotenv>=1.0
 openpyxl>=3.1
+pymysql>=1.1

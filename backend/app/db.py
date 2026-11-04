@@ -59,3 +59,24 @@ def portal_cursor():
             yield cur
     finally:
         cn.close()
+
+
+def catalogue_connection():
+    """Read-only connection to the MySQL product catalogue (digital_insurance_products).
+
+    Imported lazily: the API process never opens this, only the catalogue import does,
+    so a missing driver or an unreachable host can't stop the portal from serving.
+    """
+    import pymysql
+
+    if not config.CATALOGUE_HOST:
+        raise RuntimeError("claims_db_host is not set in backend/.env")
+    return pymysql.connect(
+        host=config.CATALOGUE_HOST,
+        port=config.CATALOGUE_PORT,
+        user=config.CATALOGUE_USER,
+        password=config.CATALOGUE_PASSWORD,
+        cursorclass=pymysql.cursors.DictCursor,
+        connect_timeout=20,
+        read_timeout=120,
+    )

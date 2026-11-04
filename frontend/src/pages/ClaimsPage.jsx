@@ -17,6 +17,7 @@ const COLUMNS = [
   ["claim_date", "Claim Date"],
   ["approved_amount", "Approved Amount"],
   ["payment_status", "Payment Status"],
+  ["risk", "Risk"],
 ];
 
 export default function ClaimsPage({ session }) {
@@ -58,6 +59,9 @@ export default function ClaimsPage({ session }) {
           statuses={session.statuses}
           pending={pending}
           setPending={setPending}
+          canReview={session.can_review_flags}
+          onFlagsChanged={reload}
+          rules={session.screening_rules}
           extraFilters={extraFilters}
           toolbar={() => (
             <select value={claimStatus} onChange={(e) => setClaimStatus(e.target.value)}>
